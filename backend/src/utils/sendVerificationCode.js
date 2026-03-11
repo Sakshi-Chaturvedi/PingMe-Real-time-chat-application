@@ -12,8 +12,7 @@ const sendVerificationCode = async (
   email,
   phone,
 ) => {
-  console.log(verificationCode, verificationMethod, email, phone);
-
+ 
   if (!verificationMethod) {
     throw new Error("Verification Method is required.");
   }

@@ -1,6 +1,7 @@
 const catchAsyncError = require("../middlewares/catchAsyncError");
 const { ErrorHandler } = require("../middlewares/errorMiddleware");
 const userModel = require("../models/user.model");
+const sendToken = require("../utils/sendToken");
 const sendVerificationCode = require("../utils/sendVerificationCode");
 
 // ! <<<<<<<<<<<<<-------------- Sign-UP-Controller ---------------->>>>>>>>>>>>>>>>>>
@@ -47,17 +48,57 @@ const signUpController = catchAsyncError(async (req, res, next) => {
   res.status(201).json({
     success: true,
     message:
-      VerificationMethod === "email"
+      verificationMethod === "email"
         ? `Verification code sent to ${email}`
         : "Verification code sent to your phone",
   });
 });
 
-
 // ! <<<<<<<<<<<<<<<<---------------- Verify-User-Controller --------------->>>>>>>>>>>>>>>>>>>>
 const verifyUserController = catchAsyncError(async (req, res, next) => {
-    
-})
+  const { email, phone, otp } = req.body;
+
+  if (!email || !otp || !phone) {
+    return next(new ErrorHandler("All Fields Are Required.", 400));
+  }
+
+  const isUser = await userModel.find({
+    $or: [{ email }, { phone }],
+    accountVerified: false,
+  });
+
+  if (isUser.length === 0) {
+    return next(new ErrorHandler("User not Found", 400));
+  }
+
+  let user = isUser[0];
+
+  if (isUser.length > 1) {
+    await userModel.deleteMany({
+      _id: { $ne: user._id },
+      $or: [
+        { phone, accountVerified: false },
+        { email, accountVerified: false },
+      ],
+    });
+  }
+
+  if (String(otp) !== String(user.verificationCode)) {
+    return next(new ErrorHandler("Invalid OTP", 400));
+  }
+
+  if (Date.now() > new Date(user.verificationCodeExpire).getTime()) {
+    return next(new ErrorHandler("OTP has been expired.", 400));
+  }
+
+  user.verificationCode = null;
+  user.verificationCodeExpire = null;
+  user.accountVerified = true;
+
+  await user.save();
+
+  sendToken(user, 200, "User Verified Successfully", res);
+});
 
 // ! <<<<<<<<<<<<------------- Sign-In-Controller --------------->>>>>>>>>>>>>>>>>>>>>
 const signInController = catchAsyncError(async (req, res, next) => {});
@@ -73,6 +114,7 @@ const updateProfileController = catchAsyncError(async (req, res, next) => {});
 
 module.exports = {
   signUpController,
+  verifyUserController,
   signInController,
   signOutController,
   getUserController,

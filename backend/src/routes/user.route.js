@@ -5,12 +5,16 @@ const {
   signOutController,
   getUserController,
   updateProfileController,
+  verifyUserController,
 } = require("../controllers/user.controller");
 
 const authRouter = express.Router();
 
 // ! -------------- Sign-Up-API --------------
 authRouter.post("/signUp", signUpController);
+
+// ! --------------- Verify-Account-API ---------------
+authRouter.post("/verifyUser",verifyUserController)
 
 // ! ------------- Sign-In-API -----------------
 authRouter.post("/signIn", signInController);
