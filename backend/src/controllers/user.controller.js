@@ -101,13 +101,58 @@ const verifyUserController = catchAsyncError(async (req, res, next) => {
 });
 
 // ! <<<<<<<<<<<<------------- Sign-In-Controller --------------->>>>>>>>>>>>>>>>>>>>>
-const signInController = catchAsyncError(async (req, res, next) => {});
+const signInController = catchAsyncError(async (req, res, next) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return next(new ErrorHandler("All fields are required.", 400));
+  }
+
+  const isUserExist = await userModel
+    .findOne({
+      email,
+      accountVerified: true,
+    })
+    .select("+password");
+
+  if (!isUserExist) {
+    return next(new ErrorHandler("User not found.", 400));
+  }
+
+  const isPasswordCorrect = await isUserExist.comparePassword(password);
+
+  if (!isPasswordCorrect) {
+    return next(new ErrorHandler("Password is not correct.", 4000));
+  }
+
+  sendToken(isUserExist, 200, "User LoggedIn Successfully.", res);
+});
 
 // ! <<<<<<<<<<<<<-------------- Sign-Out-Controller -------------->>>>>>>>>>>>>>>>>>>
-const signOutController = catchAsyncError(async (req, res, next) => {});
+const signOutController = catchAsyncError(async (req, res, next) => {
+  res
+    .status(200)
+    .clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "none",
+    })
+    .json({
+      success: true,
+      message: "Logged out successfully",
+    });
+});
 
 // ! <<<<<<<<<<<<<----------------- Get-Profile-Controller --------------->>>>>>>>>>>>>>>>
-const getUserController = catchAsyncError(async (req, res, next) => {});
+const getUserController = catchAsyncError(async (req, res, next) => {
+  const user = req.user;
+
+  res.status(200).json({
+    success: true,
+    message: "User Profile Fetched Successfully.",
+    user,
+  });
+});
 
 // ! <<<<<<<<<<<<<<--------------- updateProfile ----------------->>>>>>>>>>>>>>>>>>>>>>>
 const updateProfileController = catchAsyncError(async (req, res, next) => {});
