@@ -19,7 +19,6 @@ const isAuthenticatedUser = catchAsyncError(async (req, res, next) => {
   }
 
   req.user = nuser;
-
   next();
 });
 

@@ -24,7 +24,7 @@ const sendVerificationCode = async (
 
     const message = emailTemplate(verificationCode);
 
-    sendEmail({ email, subject: "Your Verification Code is", message });
+    await sendEmail({ email, subject: "Your Verification Code is", message });
 
     return {
       success: true,

@@ -3,6 +3,7 @@ const { ErrorHandler } = require("../middlewares/errorMiddleware");
 const userModel = require("../models/user.model");
 const sendToken = require("../utils/sendToken");
 const sendVerificationCode = require("../utils/sendVerificationCode");
+const cloudinary = require("../services/uploadMedia.service")
 
 // ! <<<<<<<<<<<<<-------------- Sign-UP-Controller ---------------->>>>>>>>>>>>>>>>>>
 const signUpController = catchAsyncError(async (req, res, next) => {
@@ -14,7 +15,7 @@ const signUpController = catchAsyncError(async (req, res, next) => {
 
   const isuser = await userModel.findOne({
     $or: [{ email }, { phone }],
-    accountVerified: false,
+    accountVerified: true,
   });
 
   if (isuser) {
@@ -122,7 +123,7 @@ const signInController = catchAsyncError(async (req, res, next) => {
   const isPasswordCorrect = await isUserExist.comparePassword(password);
 
   if (!isPasswordCorrect) {
-    return next(new ErrorHandler("Password is not correct.", 4000));
+    return next(new ErrorHandler("Password is not correct.", 401));
   }
 
   sendToken(isUserExist, 200, "User LoggedIn Successfully.", res);
@@ -155,7 +156,100 @@ const getUserController = catchAsyncError(async (req, res, next) => {
 });
 
 // ! <<<<<<<<<<<<<<--------------- updateProfile ----------------->>>>>>>>>>>>>>>>>>>>>>>
-const updateProfileController = catchAsyncError(async (req, res, next) => {});
+const updateProfileController = catchAsyncError(async (req, res, next) => {
+  // console.log(req.user)
+  
+  const userId = req.user.id;
+
+  const { username, email, phone } = req.body;
+
+  const updateData = {};
+
+  if (username) updateData.username = username;
+  if (email) updateData.email = email;
+  if (phone) updateData.phone = phone;
+
+  // Avatar update
+  if (req.file) {
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "avatars",
+    });
+
+    updateData.avatar = {
+      public_id: result.public_id,
+      url: result.secure_url,
+    };
+  }
+
+  const user = await userModel.findByIdAndUpdate(userId, updateData, {
+    new: true,
+    runValidators: true,
+  });
+
+  if (!user) {
+    return next(new ErrorHandler("User not found.", 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Profile updated successfully",
+    user,
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Save Push Subscription — Feature 6
+// ═══════════════════════════════════════════════════════════
+const savePushSubscription = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+  const { subscription } = req.body;
+
+  if (!subscription) {
+    return next(new ErrorHandler("Push subscription data is required", 400));
+  }
+
+  await userModel.findByIdAndUpdate(userId, { pushSubscription: subscription });
+
+  res.status(200).json({
+    success: true,
+    message: "Push subscription saved successfully",
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Save E2EE Public Key — Feature 4
+// ═══════════════════════════════════════════════════════════
+const savePublicKey = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+  const { publicKey } = req.body;
+
+  if (!publicKey) {
+    return next(new ErrorHandler("Public key is required", 400));
+  }
+
+  await userModel.findByIdAndUpdate(userId, { publicKey });
+
+  res.status(200).json({
+    success: true,
+    message: "Public key saved successfully",
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Get User Public Key — Feature 4
+// ═══════════════════════════════════════════════════════════
+const getUserPublicKey = catchAsyncError(async (req, res, next) => {
+  const { userId } = req.params;
+
+  const user = await userModel.findById(userId).select("publicKey username");
+  if (!user) return next(new ErrorHandler("User not found", 404));
+
+  res.status(200).json({
+    success: true,
+    publicKey: user.publicKey,
+    username: user.username,
+  });
+});
 
 module.exports = {
   signUpController,
@@ -164,4 +258,7 @@ module.exports = {
   signOutController,
   getUserController,
   updateProfileController,
+  savePushSubscription,
+  savePublicKey,
+  getUserPublicKey,
 };

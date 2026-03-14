@@ -29,7 +29,7 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, "Password is required"],
       minlength: [6, "Password must be at least 6 characters"],
-      select: false, // password default me response me nahi ayega
+      select: false,
     },
 
     phone: {
@@ -39,9 +39,20 @@ const userSchema = new mongoose.Schema(
       match: [/^[0-9]{10}$/, "Phone number must be 10 digits"],
     },
 
+    avatar: {
+      public_id: {
+        type: String,
+        default: "",
+      },
+      url: {
+        type: String,
+        default: "",
+      },
+    },
+
     role: {
       type: String,
-      enum: ["user", "admin", "librarian"],
+      enum: ["user", "admin"],
       default: "user",
     },
 
@@ -55,18 +66,38 @@ const userSchema = new mongoose.Schema(
 
     resetPasswordToken: String,
     resetPasswordExpire: Date,
+
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+
+    lastSeen: {
+      type: Date,
+      default: Date.now,
+    },
+
+    // ── E2EE public key storage — Feature 4 ──
+    publicKey: {
+      type: String,
+      default: "",
+    },
+
+    // ── Web Push subscription — Feature 6 ──
+    pushSubscription: {
+      type: Object,
+      default: null,
+    },
   },
   {
-    timestamps: true, // createdAt & updatedAt auto manage
-  },
+    timestamps: true,
+  }
 );
-
-userSchema.pre("save", async function (next) {
+userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
-    return next;
+    return;
   }
   this.password = await bcrypt.hash(this.password, 10);
-  next;
 });
 
 userSchema.methods.comparePassword = async function (enteredPass) {
@@ -93,6 +124,6 @@ userSchema.methods.generateToken = function () {
   });
 };
 
-const userModel = mongoose.model("/usermessaging", userSchema);
+const userModel = mongoose.model("chatusers", userSchema);
 
 module.exports = userModel;
