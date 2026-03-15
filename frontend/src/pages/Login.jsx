@@ -32,7 +32,6 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-logo">💬</div>
           <h1>PingMe</h1>
           <p>Sign in to continue chatting</p>
         </div>

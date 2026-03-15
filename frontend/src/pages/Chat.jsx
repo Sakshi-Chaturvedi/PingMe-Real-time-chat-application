@@ -38,7 +38,7 @@ export default function Chat() {
       // The backend adds 'groupName' or 'sender' strings to newNotification
       if (document.hidden) return; // Native notification handles this
       toast.success(
-        `New message from ${data.sender || data.groupName}: ${data.content}`, 
+        `New message from ${data.sender || data.groupName}: ${data.content}`,
         { duration: 4000, icon: '💬' }
       );
     };
@@ -65,7 +65,7 @@ export default function Chat() {
       {/* Left Navigation Bar */}
       <nav className="nav-bar">
         <div className="nav-top">
-          <div className="nav-logo">💬</div>
+          {/* <div className="nav-logo">💬</div> */}
           <button
             id="tab-chats"
             className={`nav-btn ${activeTab === "chats" ? "active" : ""}`}
