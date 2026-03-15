@@ -361,7 +361,7 @@ export default function ChatWindow({ chatData, onBack }) {
       setShowSearch(false);
       setSearchResults([]);
     } else {
-      toast.error("Message not found in current view. Try scrolling up.");
+      toast.error("Message not found. Try scrolling up to load more messages.");
     }
   };
 
@@ -454,9 +454,9 @@ export default function ChatWindow({ chatData, onBack }) {
           <div className="search-results-list">
             {searchResults.map((msg) => (
               <div 
-                key={msg._id} 
+                key={msg.messageId} 
                 className="search-result-item"
-                onClick={() => scrollToMessage(msg._id)}
+                onClick={() => scrollToMessage(msg.messageId)}
               >
                 <div className="search-result-top">
                   <span className="search-result-sender">{msg.sender?.username}</span>

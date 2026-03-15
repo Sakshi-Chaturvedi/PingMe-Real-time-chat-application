@@ -441,7 +441,6 @@ const searchMessages = catchAsyncError(async (req, res, next) => {
   const projection = {};
 
   if (query && query.trim().length > 0) {
-    // Note: MongoDB text search works best with the text index we just created
     searchFilter.$text = { $search: query };
     sortOptions.score = { $meta: "textScore" };
     projection.score = { $meta: "textScore" };
@@ -456,9 +455,19 @@ const searchMessages = catchAsyncError(async (req, res, next) => {
     .sort(sortOptions)
     .limit(50);
 
+  // Map results to the requested format
+  const results = messages.map(msg => ({
+    messageId: msg._id,
+    sender: msg.sender,
+    message: msg.message,
+    media: msg.media,
+    createdAt: msg.createdAt,
+    file: msg.file // Include file for completeness if it matched via name
+  }));
+
   res.status(200).json({
     success: true,
-    results: messages,
+    results,
   });
 });
 

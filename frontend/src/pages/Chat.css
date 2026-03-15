@@ -1739,3 +1739,21 @@ mark.highlight {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Search Highlight */
+.highlight {
+  background-color: #ffeb3b;
+  color: #000;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.highlight-pulse {
+  animation: pulse-border 2s ease-in-out;
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 0 0 0 0 var(--accent); }
+  50% { box-shadow: 0 0 0 10px rgba(79, 70, 229, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(79, 70, 229, 0); }
+}
