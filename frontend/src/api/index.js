@@ -1,7 +1,8 @@
 import axios from "axios";
+import { API_URL } from "../config";
 
 const API = axios.create({
-  baseURL: "http://localhost:3000/api/v1",
+  baseURL: API_URL,
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -24,7 +25,7 @@ export const savePublicKey = (publicKey) =>
   API.post("/auth/publicKey", { publicKey });
 export const getUserPublicKey = (userId) =>
   API.get(`/auth/publicKey/${userId}`);
-export const getUserProfile = (userId) => 
+export const getUserProfile = (userId) =>
   API.get(`/auth/profile/${userId}`);
 export const blockUser = (blockId) =>
   API.post(`/auth/block/${blockId}`);
@@ -61,7 +62,7 @@ export const togglePinMessage = (messageId) =>
   API.put(`/message/pin/${messageId}`);
 export const getPinnedMessages = (conversationId) =>
   API.get(`/message/pinned/${conversationId}`);
-export const getSharedMedia = (conversationId) => 
+export const getSharedMedia = (conversationId) =>
   API.get(`/message/media/${conversationId}`);
 export const forwardMessage = (messageId, data) =>
   API.post(`/message/forward/${messageId}`, data);

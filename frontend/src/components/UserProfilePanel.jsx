@@ -3,6 +3,7 @@ import { getUserProfile, getSharedMedia, blockUser, unblockUser } from "../api";
 import { FiX, FiPhone, FiMail, FiCalendar, FiInfo, FiSlash, FiUserPlus } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
+import { BASE_URL } from "../config";
 import "./UserProfilePanel.css";
 
 export default function UserProfilePanel({ user, conversationId, onClose, isGroup }) {
@@ -148,7 +149,7 @@ export default function UserProfilePanel({ user, conversationId, onClose, isGrou
             <div className="media-grid">
               {media.map((msg) => {
                 const url = msg.media?.url || msg.file?.url || "";
-                const fullUrl = url.startsWith("http") ? url : `http://localhost:3000${url}`;
+                const fullUrl = url.startsWith("http") ? url : `${BASE_URL}${url}`;
                 const isImage = url.match(/\.(jpeg|jpg|gif|png)$/i) != null || (msg.media?.type === "image");
                 
                 return (

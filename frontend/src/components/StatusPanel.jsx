@@ -8,6 +8,7 @@ import {
   deleteStatus,
 } from "../api";
 import toast from "react-hot-toast";
+import { BASE_URL } from "../config";
 import { FiPlus, FiX, FiTrash2, FiEye } from "react-icons/fi";
 
 export default function StatusPanel() {
@@ -176,7 +177,7 @@ export default function StatusPanel() {
               }`}
             >
               {group.user.avatar?.url ? (
-                <img src={group.user.avatar.url} alt="" className="avatar" />
+                <img src={group.user.avatar.url.startsWith('http') ? group.user.avatar.url : `${BASE_URL}${group.user.avatar.url}`} alt="" className="avatar" />
               ) : (
                 <div className="avatar-placeholder">
                   {group.user.username?.charAt(0)?.toUpperCase()}
@@ -338,11 +339,11 @@ export default function StatusPanel() {
                   <p className="status-viewer-text">{current.text}</p>
                 )}
                 {current.contentType === "image" && (
-                  <img src={current.media?.url} alt="status" />
+                  <img src={current.media?.url?.startsWith('http') ? current.media.url : `${BASE_URL}${current.media.url}`} alt="status" />
                 )}
                 {current.contentType === "video" && (
                   <video controls autoPlay>
-                    <source src={current.media?.url} />
+                    <source src={current.media?.url?.startsWith('http') ? current.media.url : `${BASE_URL}${current.media.url}`} />
                   </video>
                 )}
                 {current.caption && (

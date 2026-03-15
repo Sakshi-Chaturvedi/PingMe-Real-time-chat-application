@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "./AuthContext";
+import { BASE_URL } from "../config";
 
 const SocketContext = createContext(null);
 
@@ -17,7 +18,7 @@ export function SocketProvider({ children }) {
 
   useEffect(() => {
     if (user) {
-      const newSocket = io("http://localhost:3000", {
+      const newSocket = io(BASE_URL, {
         withCredentials: true,
         transports: ["websocket", "polling"],
       });

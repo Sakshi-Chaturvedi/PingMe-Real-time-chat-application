@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { BASE_URL } from "../config";
 import {
   FiEdit3,
   FiTrash2,
@@ -108,19 +109,19 @@ export default function MessageBubble({
         <div className="msg-media">
           {msg.media.type === "image" && (
             <img
-              src={msg.media.url.startsWith('http') ? msg.media.url : `http://localhost:3000${msg.media.url}`}
+              src={msg.media.url.startsWith('http') ? msg.media.url : `${BASE_URL}${msg.media.url}`}
               alt="media"
               className="msg-image"
             />
           )}
           {msg.media.type === "video" && (
             <video controls className="msg-video">
-              <source src={msg.media.url.startsWith('http') ? msg.media.url : `http://localhost:3000${msg.media.url}`} />
+              <source src={msg.media.url.startsWith('http') ? msg.media.url : `${BASE_URL}${msg.media.url}`} />
             </video>
           )}
           {msg.media.type === "audio" && (
             <audio controls className="msg-audio">
-              <source src={msg.media.url.startsWith('http') ? msg.media.url : `http://localhost:3000${msg.media.url}`} />
+              <source src={msg.media.url.startsWith('http') ? msg.media.url : `${BASE_URL}${msg.media.url}`} />
             </audio>
           )}
         </div>
@@ -139,7 +140,7 @@ export default function MessageBubble({
             </span>
           </div>
           <a
-            href={msg.file.url.startsWith('http') ? msg.file.url : `http://localhost:3000${msg.file.url}`}
+            href={msg.file.url.startsWith('http') ? msg.file.url : `${BASE_URL}${msg.file.url}`}
             download={msg.file.originalName}
             className="file-download"
           >

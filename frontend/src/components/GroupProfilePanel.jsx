@@ -15,6 +15,7 @@ import {
   FiTrash2,
 } from "react-icons/fi";
 import toast from "react-hot-toast";
+import { BASE_URL } from "../config";
 
 export default function GroupProfilePanel({
   conversation,
@@ -252,7 +253,7 @@ export default function GroupProfilePanel({
                 const url = msg.media?.url || msg.file?.url || "";
                 const fullUrl = url.startsWith("http")
                   ? url
-                  : `http://localhost:3000${url}`;
+                  : `${BASE_URL}${url}`;
                 const isImage =
                   url.match(/\.(jpeg|jpg|gif|png)$/i) != null ||
                   msg.media?.type === "image";

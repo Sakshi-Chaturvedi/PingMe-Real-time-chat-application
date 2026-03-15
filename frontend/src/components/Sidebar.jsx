@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
+import { BASE_URL } from "../config";
 import { getAllUsers, getConversations, archiveChat, unarchiveChat } from "../api";
 import { FiSearch, FiPlus, FiUsers, FiArchive, FiArrowLeft } from "react-icons/fi";
 import CreateGroupModal from "./CreateGroupModal";
@@ -178,9 +179,9 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
               }}
             >
               <div className="avatar-wrapper">
-                {avatar ? (
-                  <img src={avatar} alt={displayName} className="avatar" />
-                ) : (
+                 {avatar ? (
+                   <img src={avatar.startsWith('http') ? avatar : `${BASE_URL}${avatar}`} alt={displayName} className="avatar" />
+                 ) : (
                   <div className="avatar-placeholder">
                     {conv.isGroup ? (
                       <FiUsers />
