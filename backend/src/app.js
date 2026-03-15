@@ -30,7 +30,7 @@ app.use(cookieParser());
 app.use(
   cors({
     origin: [
-      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URL?.replace(/\/$/, ""), // Remove trailing slash if any
       "http://localhost:5173",
       "http://localhost:5174",
       "https://ping-me-real-time-chat-application.vercel.app"

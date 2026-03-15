@@ -135,7 +135,7 @@ const signOutController = catchAsyncError(async (req, res, next) => {
     .status(200)
     .clearCookie("token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
       sameSite: "none",
     })
     .json({

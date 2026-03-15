@@ -3,7 +3,7 @@
 const sendToken = (user, statusCode, message, res) => {
     const token = user.generateToken();
 
-    const isProduction = process.env.NODE_ENV === "production"
+    const isProduction = process.env.NODE_ENV === "production" || process.env.FRONTEND_URL?.includes("vercel.app");
 
     res
     .status(statusCode)
@@ -13,8 +13,8 @@ const sendToken = (user, statusCode, message, res) => {
           Number(process.env.COOKIE_EXPIRE || 7) * 24 * 60 * 60 * 1000,
       ),
       httpOnly: true,
-      secure: isProduction, // true only in production (HTTPS)
-      sameSite: isProduction ? "none" : "lax", // none for production, lax for localhost
+      secure: true, // Always true for cross-domain cookies in production
+      sameSite: "none", // Required for cross-domain cookies (Vercel -> Render)
     })
     .json({
       success: true,
