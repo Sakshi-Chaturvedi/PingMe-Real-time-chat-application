@@ -324,13 +324,16 @@ const archiveChat = catchAsyncError(async (req, res, next) => {
   const userId = req.user._id;
   const { conversationId } = req.params;
 
-  await userModel.findByIdAndUpdate(userId, {
-    $addToSet: { archivedChats: conversationId },
-  });
+  const user = await userModel.findByIdAndUpdate(
+    userId,
+    { $addToSet: { archivedChats: conversationId } },
+    { new: true }
+  );
 
   res.status(200).json({
     success: true,
     message: "Chat archived successfully",
+    user,
   });
 });
 
@@ -341,13 +344,16 @@ const unarchiveChat = catchAsyncError(async (req, res, next) => {
   const userId = req.user._id;
   const { conversationId } = req.params;
 
-  await userModel.findByIdAndUpdate(userId, {
-    $pull: { archivedChats: conversationId },
-  });
+  const user = await userModel.findByIdAndUpdate(
+    userId,
+    { $pull: { archivedChats: conversationId } },
+    { new: true }
+  );
 
   res.status(200).json({
     success: true,
     message: "Chat unarchived successfully",
+    user,
   });
 });
 

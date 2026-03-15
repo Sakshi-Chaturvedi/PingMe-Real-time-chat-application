@@ -525,12 +525,13 @@ const getConversations = catchAsyncError(async (req, res, next) => {
 
   // Re-fetch user to get latest archived list
   const user = await userModel.findById(userId);
+  const archivedList = user.archivedChats || [];
 
   const query = { participants: userId };
   if (archived === "true") {
-    query._id = { $in: user.archivedChats || [] };
+    query._id = { $in: archivedList };
   } else {
-    query._id = { $nin: user.archivedChats || [] };
+    query._id = { $nin: archivedList };
   }
 
   const conversations = await conversationModel

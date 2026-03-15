@@ -7,10 +7,11 @@ import CreateGroupModal from "./CreateGroupModal";
 import toast from "react-hot-toast";
 
 export default function Sidebar({ selectedChat, onSelectChat }) {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { onlineUsers, typingUsers, unreadCounts, setUnreadCounts } = useSocket();
   const [users, setUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
+  const [archivedConversations, setArchivedConversations] = useState([]);
   const [search, setSearch] = useState("");
   const [showGroupModal, setShowGroupModal] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -18,6 +19,11 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
 
   useEffect(() => {
     fetchUsers();
+    fetchAllConversations();
+  }, []);
+
+  useEffect(() => {
+    // Re-fetch only the current view when archive state changes
     fetchConversations();
   }, [showArchived]);
 
@@ -30,11 +36,27 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
     }
   };
 
+  const fetchAllConversations = async () => {
+    try {
+      const [activeRes, archivedRes] = await Promise.all([
+        getConversations(false),
+        getConversations(true)
+      ]);
+      if (activeRes.data.success) setConversations(activeRes.data.conversations);
+      if (archivedRes.data.success) setArchivedConversations(archivedRes.data.conversations);
+    } catch (err) {
+      console.error("Failed to fetch all conversations:", err);
+    }
+  };
+
   const fetchConversations = async () => {
     setLoadingConv(true);
     try {
       const { data } = await getConversations(showArchived);
-      if (data.success) setConversations(data.conversations);
+      if (data.success) {
+        if (showArchived) setArchivedConversations(data.conversations);
+        else setConversations(data.conversations);
+      }
     } catch (err) {
       console.error("Failed to fetch conversations:", err);
     } finally {
@@ -45,14 +67,20 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
   const handleArchiveToggle = async (e, convId) => {
     e.stopPropagation();
     try {
+      let res;
       if (showArchived) {
-        await unarchiveChat(convId);
+        res = await unarchiveChat(convId);
         toast.success("Chat unarchived");
       } else {
-        await archiveChat(convId);
+        res = await archiveChat(convId);
         toast.success("Chat archived");
       }
-      fetchConversations();
+      
+      if (res.data.success && res.data.user) {
+        updateUser(res.data.user);
+      }
+      
+      fetchAllConversations();
     } catch (err) {
       toast.error("Failed to update archive status");
     }
@@ -122,7 +150,7 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
       {/* Conversations List */}
       <div className="sidebar-list">
         {/* Existing conversations */}
-        {conversations.map((conv) => {
+        {(showArchived ? archivedConversations : conversations).map((conv) => {
           const otherUser = conv.isGroup ? null : getOtherUser(conv);
           const displayName = conv.isGroup
             ? conv.groupName
@@ -186,7 +214,7 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
                     onClick={(e) => handleArchiveToggle(e, conv._id)}
                     title={showArchived ? "Unarchive chat" : "Archive chat"}
                   >
-                    <FiArchive />
+                    {showArchived ? <FiArrowLeft /> : <FiArchive />}
                   </button>
                 </div>
               </div>
@@ -194,11 +222,16 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
           );
         })}
 
-        {/* Users without conversations (filtered) */}
-        {filteredUsers
+        {/* Users without conversations (filtered) - ONLY show in main chats view */}
+        {!showArchived && filteredUsers
           .filter(
             (u) =>
+              // Filter out users who already have an active conversation
               !conversations.some((c) =>
+                !c.isGroup && c.participants?.some((p) => p._id === u._id)
+              ) &&
+              // Filter out users who have an archived conversation
+              !archivedConversations.some((c) =>
                 !c.isGroup && c.participants?.some((p) => p._id === u._id)
               )
           )
