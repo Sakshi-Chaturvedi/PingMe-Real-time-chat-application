@@ -33,6 +33,7 @@ app.use(
       process.env.FRONTEND_URL,
       "http://localhost:5173",
       "http://localhost:5174",
+      "https://ping-me-real-time-chat-application.vercel.app"
     ],
     credentials: true,
   })

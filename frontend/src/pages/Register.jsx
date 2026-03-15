@@ -59,7 +59,6 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-logo">💬</div>
           <h1>PingMe</h1>
           <p>{step === 1 ? "Create your account" : "Verify your account"}</p>
         </div>
