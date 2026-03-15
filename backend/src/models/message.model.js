@@ -71,11 +71,21 @@ const messageSchema = new mongoose.Schema(
   pinnedBy: { type: mongoose.Schema.Types.ObjectId, ref: "chatusers" },
   pinnedAt: { type: Date },
 
+  // ── Forwarding — Feature 10 ──
+  isForwarded: { type: Boolean, default: false },
+  forwardedFrom: {
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: "chatusers" },
+    messageId: { type: mongoose.Schema.Types.ObjectId, ref: "Message" },
+  },
+
   // ── Reply/thread support ──
   replyTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Message"
-  }
+  },
+
+  // ── System Messages (join/leave/admin actions) ──
+  isSystemMessage: { type: Boolean, default: false },
 },
 { timestamps: true }
 );
@@ -85,6 +95,6 @@ messageSchema.index({ conversationId: 1, createdAt: 1 });
 messageSchema.index({ sender: 1 });
 messageSchema.index({ conversationId: 1, isPinned: 1 });
 // Text index for message search — Feature 9
-messageSchema.index({ message: "text" });
+messageSchema.index({ conversationId: 1, message: "text", "file.originalName": "text" });
 
 module.exports = mongoose.model("Message", messageSchema);

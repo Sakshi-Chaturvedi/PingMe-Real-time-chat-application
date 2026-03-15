@@ -88,6 +88,20 @@ const userSchema = new mongoose.Schema(
       type: Object,
       default: null,
     },
+
+    // ── Archive and Block Features — Feature 11 ──
+    archivedChats: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Conversation",
+      },
+    ],
+    blockedUsers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "chatusers",
+      },
+    ],
   },
   {
     timestamps: true,

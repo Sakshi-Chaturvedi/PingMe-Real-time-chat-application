@@ -24,12 +24,23 @@ export const savePublicKey = (publicKey) =>
   API.post("/auth/publicKey", { publicKey });
 export const getUserPublicKey = (userId) =>
   API.get(`/auth/publicKey/${userId}`);
+export const getUserProfile = (userId) => 
+  API.get(`/auth/profile/${userId}`);
+export const blockUser = (blockId) =>
+  API.post(`/auth/block/${blockId}`);
+export const unblockUser = (blockId) =>
+  API.delete(`/auth/unblock/${blockId}`);
+export const archiveChat = (conversationId) =>
+  API.post(`/auth/archive/${conversationId}`);
+export const unarchiveChat = (conversationId) =>
+  API.delete(`/auth/unarchive/${conversationId}`);
 
 // ── Message APIs ──
 export const getAllUsers = () => API.get("/message/getAllUsers");
-export const getConversations = () => API.get("/message/conversations");
-export const getMessages = (receiverId) =>
-  API.get(`/message/getMessages/${receiverId}`);
+export const getConversations = (archived = false) =>
+  API.get("/message/conversations", { params: { archived } });
+export const getMessages = (receiverId, page = 1, limit = 20) =>
+  API.get(`/message/getMessages/${receiverId}`, { params: { page, limit } });
 export const sendMessage = (data) =>
   API.post("/message/sendMessage", data, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -50,6 +61,10 @@ export const togglePinMessage = (messageId) =>
   API.put(`/message/pin/${messageId}`);
 export const getPinnedMessages = (conversationId) =>
   API.get(`/message/pinned/${conversationId}`);
+export const getSharedMedia = (conversationId) => 
+  API.get(`/message/media/${conversationId}`);
+export const forwardMessage = (messageId, data) =>
+  API.post(`/message/forward/${messageId}`, data);
 
 // ── Group APIs ──
 export const createGroup = (data) =>
@@ -72,8 +87,8 @@ export const sendGroupMessage = (groupId, data) =>
   API.post(`/group/sendMessage/${groupId}`, data, {
     headers: { "Content-Type": "multipart/form-data" },
   });
-export const getGroupMessages = (groupId) =>
-  API.get(`/group/messages/${groupId}`);
+export const getGroupMessages = (groupId, page = 1, limit = 20) =>
+  API.get(`/group/messages/${groupId}`, { params: { page, limit } });
 
 // ── Status APIs ──
 export const createStatus = (data) =>

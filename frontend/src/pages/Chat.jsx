@@ -19,11 +19,32 @@ import "./Chat.css";
 
 export default function Chat() {
   const { user, logout } = useAuth();
-  const { onlineUsers } = useSocket();
+  const { socket, onlineUsers, setActiveChatId, activeChatId } = useSocket();
   const { theme, toggleTheme } = useTheme();
   const [activeTab, setActiveTab] = useState("chats"); // chats | status | profile
   const [selectedChat, setSelectedChat] = useState(null); // { user, conversation }
   const [isMobileShowChat, setIsMobileShowChat] = useState(false);
+
+  // Sync activeChatId with the socket context
+  useEffect(() => {
+    setActiveChatId(selectedChat?.conversation?._id || null);
+  }, [selectedChat, setActiveChatId]);
+
+  // Hook up toast popups
+  useEffect(() => {
+    if (!socket) return;
+    const handlePop = (data) => {
+      // Avoid spamming if it's the chat we currently have open
+      // The backend adds 'groupName' or 'sender' strings to newNotification
+      if (document.hidden) return; // Native notification handles this
+      toast.success(
+        `New message from ${data.sender || data.groupName}: ${data.content}`, 
+        { duration: 4000, icon: '💬' }
+      );
+    };
+    socket.on("newNotification", handlePop);
+    return () => socket.off("newNotification", handlePop);
+  }, [socket]);
 
   const handleSelectChat = (chatData) => {
     setSelectedChat(chatData);

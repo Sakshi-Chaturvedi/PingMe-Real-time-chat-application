@@ -3,6 +3,8 @@ const { ErrorHandler } = require("../middlewares/errorMiddleware");
 const conversationModel = require("../models/conversation.model");
 const messageModel = require("../models/message.model");
 const cloudinary = require("../services/uploadMedia.service");
+const notificationModel = require("../models/notification.model");
+const { isUserOnline } = require("../utils/socket");
 
 // ═══════════════════════════════════════════════════════════
 //  CREATE GROUP — Feature 5
@@ -52,15 +54,50 @@ const createGroup = catchAsyncError(async (req, res, next) => {
     groupAvatar,
   });
 
+  // Create system message for group creation
+  const sysMsg = await messageModel.create({
+    conversationId: group._id,
+    sender: adminId,
+    message: `${req.user.username} created the group "${groupName}"`,
+    isSystemMessage: true,
+  });
+  group.lastMessage = sysMsg._id;
+  await group.save();
+
   const populatedGroup = await conversationModel
     .findById(group._id)
     .populate("participants", "username avatar isOnline")
     .populate("groupAdmin", "username avatar");
 
+  const populatedSysMsg = await messageModel
+    .findById(sysMsg._id)
+    .populate("sender", "username avatar");
+
   // Notify all members about the new group
   if (global.io) {
-    memberIds.forEach((memberId) => {
-      global.io.to(memberId.toString()).emit("newGroup", populatedGroup);
+    memberIds.forEach(async (memberId) => {
+      if (memberId.toString() !== adminId.toString()) {
+        if (isUserOnline(memberId.toString())) {
+          global.io.to(memberId.toString()).emit("newGroup", populatedGroup);
+          global.io.to(memberId.toString()).emit("receiveMessage", populatedSysMsg);
+          global.io.to(memberId.toString()).emit("newNotification", {
+            sender: req.user.username,
+            content: `Added you to group ${groupName}`,
+            type: "group_add"
+          });
+        } else {
+          await notificationModel.create({
+            recipient: memberId,
+            sender: adminId,
+            type: "group_add",
+            content: `Added you to group ${groupName}`,
+            conversationId: group._id
+          });
+        }
+      } else {
+        global.io.to(memberId.toString()).emit("newGroup", populatedGroup);
+        global.io.to(memberId.toString()).emit("receiveMessage", populatedSysMsg);
+      }
     });
   }
 
@@ -160,6 +197,19 @@ const addMember = catchAsyncError(async (req, res, next) => {
   group.participants.push(newMemberId);
   await group.save();
 
+  // System message
+  const newMemberUser = await require("../models/user.model").findById(newMemberId).select("username");
+  const sysMsg = await messageModel.create({
+    conversationId: groupId,
+    sender: adminId,
+    message: `${req.user.username} added ${newMemberUser?.username || "a user"}`,
+    isSystemMessage: true,
+  });
+  group.lastMessage = sysMsg._id;
+  await group.save();
+
+  const populatedSysMsg = await messageModel.findById(sysMsg._id).populate("sender", "username avatar");
+
   const populatedGroup = await conversationModel
     .findById(groupId)
     .populate("participants", "username avatar isOnline");
@@ -167,10 +217,8 @@ const addMember = catchAsyncError(async (req, res, next) => {
   if (global.io) {
     global.io.to(newMemberId).emit("addedToGroup", populatedGroup);
     group.participants.forEach((memberId) => {
-      global.io.to(memberId.toString()).emit("memberAdded", {
-        groupId,
-        newMember: newMemberId,
-      });
+      global.io.to(memberId.toString()).emit("memberAdded", { groupId, newMember: newMemberId });
+      global.io.to(memberId.toString()).emit("receiveMessage", populatedSysMsg);
     });
   }
 
@@ -207,19 +255,36 @@ const removeMember = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Only admins can remove members", 403));
   }
 
+  // Get username before removing
+  const removedUser = await require("../models/user.model").findById(targetId).select("username");
+
   group.participants = group.participants.filter(
     (p) => p.toString() !== targetId
   );
   group.groupAdmins = group.groupAdmins.filter(
     (a) => a.toString() !== targetId
   );
+
+  // Track as past participant
+  group.pastParticipants.push({ userId: targetId, leftAt: new Date() });
   await group.save();
+
+  // System message
+  const sysMsg = await messageModel.create({
+    conversationId: groupId,
+    sender: adminId,
+    message: `${req.user.username} removed ${removedUser?.username || "a user"}`,
+    isSystemMessage: true,
+  });
+  group.lastMessage = sysMsg._id;
+  await group.save();
+  const populatedSysMsg = await messageModel.findById(sysMsg._id).populate("sender", "username avatar");
 
   if (global.io) {
     global.io.to(targetId).emit("removedFromGroup", { groupId });
-    // Notify remaining members
     group.participants.forEach((memberId) => {
       global.io.to(memberId.toString()).emit("memberRemoved", { groupId, removedId: targetId });
+      global.io.to(memberId.toString()).emit("receiveMessage", populatedSysMsg);
     });
   }
 
@@ -263,6 +328,20 @@ const toggleAdmin = catchAsyncError(async (req, res, next) => {
 
   await group.save();
 
+  // System message
+  const targetUser = await require("../models/user.model").findById(targetId).select("username");
+  const sysMsg = await messageModel.create({
+    conversationId: groupId,
+    sender: adminId,
+    message: isTargetAdmin
+      ? `${req.user.username} removed ${targetUser?.username || "a user"} as admin`
+      : `${req.user.username} made ${targetUser?.username || "a user"} an admin`,
+    isSystemMessage: true,
+  });
+  group.lastMessage = sysMsg._id;
+  await group.save();
+  const populatedSysMsg = await messageModel.findById(sysMsg._id).populate("sender", "username avatar");
+
   if (global.io) {
     group.participants.forEach((memberId) => {
       global.io.to(memberId.toString()).emit("adminToggled", {
@@ -270,6 +349,7 @@ const toggleAdmin = catchAsyncError(async (req, res, next) => {
         userId: targetId,
         isAdmin: !isTargetAdmin,
       });
+      global.io.to(memberId.toString()).emit("receiveMessage", populatedSysMsg);
     });
   }
 
@@ -316,6 +396,9 @@ const leaveGroup = catchAsyncError(async (req, res, next) => {
     (a) => a.toString() !== userId.toString()
   );
 
+  // Track this user as a past participant with timestamp
+  group.pastParticipants.push({ userId, leftAt: new Date() });
+
   // Delete group if no members left
   if (group.participants.length === 0) {
     await conversationModel.findByIdAndDelete(groupId);
@@ -327,12 +410,24 @@ const leaveGroup = catchAsyncError(async (req, res, next) => {
 
   await group.save();
 
+  // System message
+  const sysMsg = await messageModel.create({
+    conversationId: groupId,
+    sender: userId,
+    message: `${req.user.username} left the group`,
+    isSystemMessage: true,
+  });
+  group.lastMessage = sysMsg._id;
+  await group.save();
+  const populatedSysMsg = await messageModel.findById(sysMsg._id).populate("sender", "username avatar");
+
   if (global.io) {
     group.participants.forEach((memberId) => {
       global.io.to(memberId.toString()).emit("memberLeft", {
         groupId,
         userId: userId.toString(),
       });
+      global.io.to(memberId.toString()).emit("receiveMessage", populatedSysMsg);
     });
   }
 
@@ -355,9 +450,9 @@ const sendGroupMessage = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("Group not found", 404));
   }
 
-  // Verify sender is a member
+  // Verify sender is still a current member
   if (!group.participants.some((p) => p.toString() === senderId.toString())) {
-    return next(new ErrorHandler("You are not a member of this group", 403));
+    return next(new ErrorHandler("You are no longer a member of this group. You cannot send messages.", 403));
   }
 
   let mediaData = {};
@@ -409,10 +504,35 @@ const sendGroupMessage = catchAsyncError(async (req, res, next) => {
 
   // Emit to all group members
   if (global.io) {
-    group.participants.forEach((memberId) => {
-      global.io
-        .to(memberId.toString())
-        .emit("receiveMessage", populatedMessage);
+    group.participants.forEach(async (memberId) => {
+      if (memberId.toString() !== senderId.toString()) {
+        if (isUserOnline(memberId.toString())) {
+          global.io
+            .to(memberId.toString())
+            .emit("receiveMessage", populatedMessage);
+          
+          global.io.to(memberId.toString()).emit("newNotification", {
+            sender: req.user.username,
+            content: message ? message.substring(0, 50) : "Sent an attachment",
+            type: "new_message",
+            groupName: group.groupName
+          });
+        } else {
+          // Offline
+          await notificationModel.create({
+            recipient: memberId,
+            sender: senderId,
+            type: "new_message",
+            content: message ? message.substring(0, 50) : "Sent an attachment",
+            conversationId: group._id
+          });
+        }
+      } else {
+        // Sender gets their own message update
+        global.io
+          .to(memberId.toString())
+          .emit("receiveMessage", populatedMessage);
+      }
     });
   }
 
@@ -429,6 +549,9 @@ const sendGroupMessage = catchAsyncError(async (req, res, next) => {
 const getGroupMessages = catchAsyncError(async (req, res, next) => {
   const { groupId } = req.params;
   const userId = req.user._id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+  const skip = (page - 1) * limit;
 
   const group = await conversationModel.findById(groupId);
   if (!group || !group.isGroup) {
@@ -439,17 +562,26 @@ const getGroupMessages = catchAsyncError(async (req, res, next) => {
     return next(new ErrorHandler("You are not a member of this group", 403));
   }
 
+  // Get total count for pagination info
+  const totalMessages = await messageModel.countDocuments({ conversationId: groupId });
+  const totalPages = Math.ceil(totalMessages / limit);
+
   const messages = await messageModel
     .find({ conversationId: groupId })
     .populate("sender", "username avatar")
     .populate("reactions.user", "username avatar")
     .populate("replyTo", "message sender")
-    .sort({ createdAt: 1 });
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
 
   res.status(200).json({
     success: true,
-    count: messages.length,
-    messages,
+    messages: messages.reverse(),
+    conversation: group,
+    currentPage: page,
+    totalPages,
+    hasMore: page < totalPages,
   });
 });
 

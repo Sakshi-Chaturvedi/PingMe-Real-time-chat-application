@@ -8,6 +8,7 @@ import {
   FiDownload,
   FiCheck,
   FiCheckCircle,
+  FiCornerUpRight,
 } from "react-icons/fi";
 
 // Quick reaction emojis
@@ -20,6 +21,8 @@ export default function MessageBubble({
   onDelete,
   onReaction,
   onTogglePin,
+  onForward,
+  highlight,
   getFileIcon,
 }) {
   const [showActions, setShowActions] = useState(false);
@@ -33,8 +36,32 @@ export default function MessageBubble({
     });
   };
 
+  const highlightText = (text, query) => {
+    if (!query || !text) return text;
+    const parts = String(text).split(new RegExp(`(${query})`, "gi"));
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark key={i} className="highlight">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
+
+  // System messages: centered, no actions
+  if (msg.isSystemMessage) {
+    return (
+      <div className="system-message">
+        <span>{msg.message}</span>
+      </div>
+    );
+  }
+
   return (
     <div
+      id={`msg-${msg._id}`}
       className={`message-bubble ${isOwn ? "own" : "other"} ${
         msg.isDeleted ? "deleted" : ""
       } ${msg.isPinned ? "pinned" : ""}`}
@@ -51,6 +78,13 @@ export default function MessageBubble({
 
       {/* Pinned indicator */}
       {msg.isPinned && <span className="pin-badge">📌 Pinned</span>}
+
+      {/* Forwarded label */}
+      {msg.isForwarded && (
+        <span className="forwarded-label">
+          ↗ Forwarded {msg.forwardedFrom?.userId?.username && `from ${msg.forwardedFrom.userId.username}`}
+        </span>
+      )}
 
       {/* Reply reference */}
       {msg.replyTo && (
@@ -89,7 +123,7 @@ export default function MessageBubble({
             {getFileIcon(msg.file.mimeType)}
           </span>
           <div className="file-info">
-            <span className="file-name">{msg.file.originalName}</span>
+            <span className="file-name">{highlightText(msg.file.originalName, highlight)}</span>
             <span className="file-size">
               {(msg.file.size / 1024).toFixed(1)} KB
             </span>
@@ -106,7 +140,7 @@ export default function MessageBubble({
 
       {/* Text content */}
       {msg.message && !msg.isDeleted && (
-        <p className="msg-text">{msg.message}</p>
+        <p className="msg-text">{highlightText(msg.message, highlight)}</p>
       )}
       {msg.isDeleted && (
         <p className="msg-text deleted-text">
@@ -151,6 +185,9 @@ export default function MessageBubble({
           </button>
           <button onClick={() => onTogglePin(msg._id)} title="Pin">
             <FiBookmark />
+          </button>
+          <button onClick={() => onForward(msg)} title="Forward">
+            <FiCornerUpRight />
           </button>
           {isOwn && (
             <>

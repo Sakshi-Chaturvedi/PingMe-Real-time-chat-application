@@ -33,6 +33,9 @@ import {
   FiDownload,
 } from "react-icons/fi";
 import MessageBubble from "./MessageBubble";
+import UserProfilePanel from "./UserProfilePanel";
+import GroupProfilePanel from "./GroupProfilePanel";
+import ForwardModal from "./ForwardModal";
 
 export default function ChatWindow({ chatData, onBack }) {
   const { user } = useAuth();
@@ -46,33 +49,59 @@ export default function ChatWindow({ chatData, onBack }) {
   const [searchResults, setSearchResults] = useState([]);
   const [pinnedMessages, setPinnedMessages] = useState([]);
   const [showPinned, setShowPinned] = useState(false);
+  const [showUserProfile, setShowUserProfile] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
+  const [forwardingMsg, setForwardingMsg] = useState(null);
+  const [currentConversation, setCurrentConversation] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
   const messagesEndRef = useRef(null);
+  const scrollRef = useRef(null);
+  const prevScrollHeightRef = useRef(0);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
 
   const { isGroup, conversation } = chatData;
   const otherUser = chatData.user;
-  const chatId = isGroup ? conversation?._id : otherUser?._id;
-  const chatName = isGroup ? conversation?.groupName : otherUser?.username;
+  const chatId = isGroup ? (currentConversation?._id || conversation?._id) : otherUser?._id;
+  const chatName = isGroup ? (currentConversation?.groupName || conversation?.groupName) : otherUser?.username;
   const isTyping = typingUsers[chatId];
+
+  // Detect if current user has left this group
+  const activeConv = isGroup ? (currentConversation || conversation) : null;
+  const hasLeftGroup = isGroup && activeConv?.participants &&
+    !activeConv.participants.some(
+      (p) => (p._id || p).toString() === user._id
+    );
+
+  // Detect if other user is blocked (Feature 11)
+  const isBlocked = !isGroup && otherUser && user?.blockedUsers?.includes(otherUser._id);
 
   // Fetch messages
   useEffect(() => {
     if (!chatId) return;
     const fetchMessages = async () => {
       setLoading(true);
+      setPage(1);
+      setHasMore(true);
       try {
         let res;
         if (isGroup) {
-          res = await getGroupMessages(chatId);
+          res = await getGroupMessages(chatId, 1);
+          if (res.data.success) {
+            setMessages(res.data.messages);
+            setCurrentConversation(res.data.conversation);
+            setHasMore(res.data.hasMore);
+          }
         } else {
-          res = await getMessages(chatId);
-        }
-        if (res.data.success) {
-          setMessages(res.data.messages);
+          res = await getMessages(chatId, 1);
+          if (res.data.success) {
+            setMessages(res.data.messages);
+            setHasMore(res.data.hasMore);
+          }
         }
       } catch (err) {
         console.error("Failed to fetch messages:", err);
@@ -81,6 +110,12 @@ export default function ChatWindow({ chatData, onBack }) {
       }
     };
     fetchMessages();
+    
+    // Reset side panels when chat changes
+    setShowUserProfile(false);
+    setShowPinned(false);
+    setShowSearch(false);
+    setCurrentConversation(null);
   }, [chatId, isGroup]);
 
   // Mark as read when conversation opens
@@ -150,10 +185,60 @@ export default function ChatWindow({ chatData, onBack }) {
     };
   }, [socket, conversation?._id, otherUser?._id, chatId, isGroup]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom only on first load or new message
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (!isFetchingMore) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      // Maintain scroll position when older messages are loaded
+      if (scrollRef.current) {
+        const newScrollHeight = scrollRef.current.scrollHeight;
+        scrollRef.current.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+        setIsFetchingMore(false);
+      }
+    }
+  }, [messages, isFetchingMore]);
+
+  // ── Pagination / Infinite Scroll ──
+  const fetchMoreMessages = async () => {
+    if (!hasMore || isFetchingMore || loading) return;
+
+    setIsFetchingMore(true);
+    const nextPage = page + 1;
+    
+    // Save current scroll height to maintain position after update
+    if (scrollRef.current) {
+      prevScrollHeightRef.current = scrollRef.current.scrollHeight;
+    }
+
+    try {
+      let res;
+      if (isGroup) {
+        res = await getGroupMessages(chatId, nextPage);
+      } else {
+        res = await getMessages(chatId, nextPage);
+      }
+
+      if (res.data.success) {
+        const newMsgs = res.data.messages;
+        if (newMsgs.length > 0) {
+          setMessages((prev) => [...newMsgs, ...prev]);
+          setPage(nextPage);
+        }
+        setHasMore(res.data.hasMore);
+      }
+    } catch (err) {
+      console.error("Failed to fetch more messages:", err);
+      setIsFetchingMore(false);
+    }
+  };
+
+  const handleScroll = (e) => {
+    // If scrolled to top (threshold of 10px), load more
+    if (e.target.scrollTop < 10 && hasMore && !isFetchingMore && !loading) {
+      fetchMoreMessages();
+    }
+  };
 
   // ── Typing ──
   const handleTyping = useCallback(() => {
@@ -260,10 +345,23 @@ export default function ChatWindow({ chatData, onBack }) {
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
     try {
-      const { data } = await searchMessages(searchQuery, conversation?._id);
-      setSearchResults(data.messages || []);
+      const { data } = await searchMessages(searchQuery, chatId);
+      setSearchResults(data.results || []);
     } catch {
       toast.error("Search failed");
+    }
+  };
+
+  const scrollToMessage = (msgId) => {
+    const element = document.getElementById(`msg-${msgId}`);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.classList.add("highlight-pulse");
+      setTimeout(() => element.classList.remove("highlight-pulse"), 2000);
+      setShowSearch(false);
+      setSearchResults([]);
+    } else {
+      toast.error("Message not found in current view. Try scrolling up.");
     }
   };
 
@@ -289,15 +387,22 @@ export default function ChatWindow({ chatData, onBack }) {
   };
 
   return (
-    <div className="chat-window">
-      {/* Chat Header */}
-      <div className="chat-header">
-        <button className="back-btn mobile-only" onClick={onBack}>
-          <FiArrowLeft />
-        </button>
-        <div className="chat-header-info">
-          <h3>{chatName || "Chat"}</h3>
-          {isTyping && <span className="typing-indicator">typing...</span>}
+    <div className="chat-window-wrapper" style={{ display: 'flex', width: '100%', height: '100%', overflow: 'hidden' }}>
+      <div className="chat-window" style={{ flex: 1 }}>
+        {/* Chat Header */}
+        <div className="chat-header">
+          <button className="back-btn mobile-only" onClick={onBack}>
+            <FiArrowLeft />
+          </button>
+          
+          <div 
+            className="chat-header-info" 
+            style={{ cursor: 'pointer' }}
+            onClick={() => setShowUserProfile(!showUserProfile)}
+            title="View Profile"
+          >
+            <h3>{chatName || "Chat"}</h3>
+            {isTyping && <span className="typing-indicator">typing...</span>}
           {!isTyping && !isGroup && otherUser && (
             <span className="online-status">
               {typingUsers[otherUser._id] ? "typing..." : ""}
@@ -340,12 +445,31 @@ export default function ChatWindow({ chatData, onBack }) {
       {/* Search Results */}
       {searchResults.length > 0 && (
         <div className="search-results">
-          <h4>Search Results ({searchResults.length})</h4>
-          {searchResults.map((msg) => (
-            <div key={msg._id} className="search-result-item">
-              <strong>{msg.sender?.username}:</strong> {msg.message}
-            </div>
-          ))}
+          <div className="search-results-header">
+            <h4>Search Results ({searchResults.length})</h4>
+            <button className="icon-btn" onClick={() => setSearchResults([])}>
+              <FiX />
+            </button>
+          </div>
+          <div className="search-results-list">
+            {searchResults.map((msg) => (
+              <div 
+                key={msg._id} 
+                className="search-result-item"
+                onClick={() => scrollToMessage(msg._id)}
+              >
+                <div className="search-result-top">
+                  <span className="search-result-sender">{msg.sender?.username}</span>
+                  <span className="search-result-date">
+                    {new Date(msg.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <p className="search-result-text">
+                  {msg.message || (msg.file?.originalName ? `File: ${msg.file.originalName}` : "Media")}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -368,7 +492,12 @@ export default function ChatWindow({ chatData, onBack }) {
       )}
 
       {/* Messages */}
-      <div className="messages-container">
+      <div 
+        className="messages-container" 
+        onScroll={handleScroll}
+        ref={scrollRef}
+      >
+        {isFetchingMore && <div className="loading-more">Loading older messages...</div>}
         {loading && <div className="loading-messages">Loading messages...</div>}
         {messages.map((msg) => (
           <MessageBubble
@@ -379,6 +508,8 @@ export default function ChatWindow({ chatData, onBack }) {
             onDelete={handleDelete}
             onReaction={handleReaction}
             onTogglePin={handleTogglePin}
+            onForward={(msg) => setForwardingMsg(msg)}
+            highlight={searchQuery}
             getFileIcon={getFileIcon}
           />
         ))}
@@ -407,6 +538,11 @@ export default function ChatWindow({ chatData, onBack }) {
       )}
 
       {/* Compose Area */}
+      {hasLeftGroup ? (
+        <div className="compose-area left-group-banner">
+          <span>🚫 You left this group. You can no longer send messages.</span>
+        </div>
+      ) : (
       <div className="compose-area">
         <div className="compose-left">
           <button
@@ -429,7 +565,11 @@ export default function ChatWindow({ chatData, onBack }) {
           />
         </div>
         <div className="compose-input-wrapper">
-          {editingId ? (
+          {isBlocked ? (
+            <div className="blocked-input-placeholder">
+              You blocked this user. Unblock to send messages.
+            </div>
+          ) : editingId ? (
             <input
               type="text"
               value={editText}
@@ -452,14 +592,17 @@ export default function ChatWindow({ chatData, onBack }) {
             />
           )}
         </div>
-        <button
-          id="send-btn"
-          className="send-btn"
-          onClick={editingId ? handleSaveEdit : handleSend}
-        >
-          {editingId ? <FiCheck /> : <FiSend />}
-        </button>
+        {!isBlocked && (
+          <button
+            id="send-btn"
+            className="send-btn"
+            onClick={editingId ? handleSaveEdit : handleSend}
+          >
+            {editingId ? <FiCheck /> : <FiSend />}
+          </button>
+        )}
       </div>
+      )}
 
       {/* Emoji Picker */}
       {showEmoji && (
@@ -474,6 +617,44 @@ export default function ChatWindow({ chatData, onBack }) {
             height={350}
           />
         </div>
+      )}
+      </div>
+
+      {showUserProfile && !isGroup && (
+        <UserProfilePanel 
+          user={otherUser} 
+          conversationId={conversation?._id}
+          isGroup={false}
+          onClose={() => setShowUserProfile(false)} 
+        />
+      )}
+
+      {showUserProfile && isGroup && (
+        <GroupProfilePanel
+          conversation={currentConversation || conversation}
+          currentUser={user}
+          onClose={() => setShowUserProfile(false)}
+          onGroupUpdated={() => {
+            const fetchMessages = async () => {
+              try {
+                const res = await getGroupMessages(chatId);
+                if (res.data.success) {
+                  setMessages(res.data.messages);
+                  setCurrentConversation(res.data.conversation);
+                }
+              } catch {}
+            };
+            fetchMessages();
+          }}
+        />
+      )}
+
+      {/* Forward Modal */}
+      {forwardingMsg && (
+        <ForwardModal
+          message={forwardingMsg}
+          onClose={() => setForwardingMsg(null)}
+        />
       )}
     </div>
   );

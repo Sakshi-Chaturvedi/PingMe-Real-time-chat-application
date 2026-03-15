@@ -49,6 +49,14 @@ const conversationSchema = new mongoose.Schema(
       default: "",
       maxlength: [200, "Group description cannot exceed 200 characters"],
     },
+
+    // ── Past Participants (users who left or were removed) ──
+    pastParticipants: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: "chatusers" },
+        leftAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true }
 );

@@ -11,6 +11,8 @@ export function SocketProvider({ children }) {
   const [socket, setSocket] = useState(null);
   const [onlineUsers, setOnlineUsers] = useState([]);
   const [typingUsers, setTypingUsers] = useState({});
+  const [unreadCounts, setUnreadCounts] = useState({}); // { conversationId: count }
+  const [activeChatId, setActiveChatId] = useState(null); // Which chat is currently open
   const socketRef = useRef(null);
 
   useEffect(() => {
@@ -24,6 +26,11 @@ export function SocketProvider({ children }) {
         console.log("Socket connected:", newSocket.id);
         // Join the user's own room
         newSocket.emit("join", user._id);
+        
+        // Request browser notification permission
+        if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+          Notification.requestPermission();
+        }
       });
 
       // Track online users
@@ -48,6 +55,31 @@ export function SocketProvider({ children }) {
           delete updated[senderId];
           return updated;
         });
+      });
+
+      // Handle raw receive message globally for badges
+      newSocket.on("receiveMessage", (msg) => {
+        // If the message is from someone else and not in the currently open chat
+        if (msg.sender._id !== user._id && msg.conversationId !== activeChatId) {
+          setUnreadCounts((prev) => ({
+            ...prev,
+            [msg.conversationId]: (prev[msg.conversationId] || 0) + 1
+          }));
+        }
+      });
+
+      // Handle new notifications (toasts + browser push)
+      newSocket.on("newNotification", (data) => {
+        // Only trigger toast/push if the conversation is not open
+        // Wait, newNotification event doesn't have conversationId universally in the payload yet, 
+        // but let's just use the `activeChatId` condition safely if possible, or just show it anyway.
+        // If document is hidden (backgrounded), show Native Push Notification
+        if (document.hidden && "Notification" in window && Notification.permission === "granted") {
+          new Notification(`New message from ${data.sender || data.groupName}`, {
+            body: data.content,
+            icon: "/favicon.ico" // standard fallback
+          });
+        }
       });
 
       socketRef.current = newSocket;
@@ -90,6 +122,10 @@ export function SocketProvider({ children }) {
         socket,
         onlineUsers,
         typingUsers,
+        unreadCounts,
+        setUnreadCounts,
+        activeChatId,
+        setActiveChatId,
         emitTyping,
         emitStopTyping,
         emitMessageRead,

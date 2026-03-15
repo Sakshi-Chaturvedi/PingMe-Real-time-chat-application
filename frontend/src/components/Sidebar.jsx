@@ -1,22 +1,25 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useSocket } from "../context/SocketContext";
-import { getAllUsers, getConversations } from "../api";
-import { FiSearch, FiPlus, FiUsers } from "react-icons/fi";
+import { getAllUsers, getConversations, archiveChat, unarchiveChat } from "../api";
+import { FiSearch, FiPlus, FiUsers, FiArchive, FiArrowLeft } from "react-icons/fi";
 import CreateGroupModal from "./CreateGroupModal";
+import toast from "react-hot-toast";
 
 export default function Sidebar({ selectedChat, onSelectChat }) {
   const { user } = useAuth();
-  const { onlineUsers, typingUsers } = useSocket();
+  const { onlineUsers, typingUsers, unreadCounts, setUnreadCounts } = useSocket();
   const [users, setUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [search, setSearch] = useState("");
   const [showGroupModal, setShowGroupModal] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [loadingConv, setLoadingConv] = useState(false);
 
   useEffect(() => {
     fetchUsers();
     fetchConversations();
-  }, []);
+  }, [showArchived]);
 
   const fetchUsers = async () => {
     try {
@@ -28,11 +31,30 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
   };
 
   const fetchConversations = async () => {
+    setLoadingConv(true);
     try {
-      const { data } = await getConversations();
+      const { data } = await getConversations(showArchived);
       if (data.success) setConversations(data.conversations);
     } catch (err) {
       console.error("Failed to fetch conversations:", err);
+    } finally {
+      setLoadingConv(false);
+    }
+  };
+
+  const handleArchiveToggle = async (e, convId) => {
+    e.stopPropagation();
+    try {
+      if (showArchived) {
+        await unarchiveChat(convId);
+        toast.success("Chat unarchived");
+      } else {
+        await archiveChat(convId);
+        toast.success("Chat archived");
+      }
+      fetchConversations();
+    } catch (err) {
+      toast.error("Failed to update archive status");
     }
   };
 
@@ -56,15 +78,33 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h2>Chats</h2>
-        <button
-          id="create-group-btn"
-          className="icon-btn"
-          onClick={() => setShowGroupModal(true)}
-          title="Create Group"
-        >
-          <FiPlus />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {showArchived && (
+            <button className="icon-btn" onClick={() => setShowArchived(false)}>
+              <FiArrowLeft />
+            </button>
+          )}
+          <h2>{showArchived ? "Archived" : "Chats"}</h2>
+        </div>
+        <div className="sidebar-header-actions">
+          {!showArchived && (
+            <button
+              className="icon-btn"
+              onClick={() => setShowArchived(true)}
+              title="Archived Chats"
+            >
+              <FiArchive />
+            </button>
+          )}
+          <button
+            id="create-group-btn"
+            className="icon-btn"
+            onClick={() => setShowGroupModal(true)}
+            title="Create Group"
+          >
+            <FiPlus />
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -99,13 +139,15 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
             <div
               key={conv._id}
               className={`sidebar-item ${isSelected ? "active" : ""}`}
-              onClick={() =>
+              onClick={() => {
+                // Clear unread count locally when opened
+                setUnreadCounts(prev => ({ ...prev, [conv._id]: 0 }));
                 onSelectChat({
                   user: otherUser,
                   conversation: conv,
                   isGroup: conv.isGroup,
-                })
-              }
+                });
+              }}
             >
               <div className="avatar-wrapper">
                 {avatar ? (
@@ -136,6 +178,16 @@ export default function Sidebar({ selectedChat, onSelectChat }) {
                       {conv.lastMessage?.message || "No messages yet"}
                     </span>
                   )}
+                  {unreadCounts[conv._id] > 0 && (
+                    <div className="unread-badge">{unreadCounts[conv._id]}</div>
+                  )}
+                  <button 
+                    className="archive-item-btn" 
+                    onClick={(e) => handleArchiveToggle(e, conv._id)}
+                    title={showArchived ? "Unarchive chat" : "Archive chat"}
+                  >
+                    <FiArchive />
+                  </button>
                 </div>
               </div>
             </div>

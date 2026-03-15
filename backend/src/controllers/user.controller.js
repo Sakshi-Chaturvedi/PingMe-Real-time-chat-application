@@ -155,6 +155,29 @@ const getUserController = catchAsyncError(async (req, res, next) => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════
+//  GET OTHER USER PROFILE BY ID
+// ═══════════════════════════════════════════════════════════
+const getUserProfileById = catchAsyncError(async (req, res, next) => {
+  const { userId } = req.params;
+
+  const user = await userModel.findById(userId).select({
+    password: 0,
+    verificationCode: 0,
+    verificationCodeExpire: 0,
+    pushSubscription: 0,
+  });
+
+  if (!user) {
+    return next(new ErrorHandler("User not found.", 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    user,
+  });
+});
+
 // ! <<<<<<<<<<<<<<--------------- updateProfile ----------------->>>>>>>>>>>>>>>>>>>>>>>
 const updateProfileController = catchAsyncError(async (req, res, next) => {
   // console.log(req.user)
@@ -251,14 +274,96 @@ const getUserPublicKey = catchAsyncError(async (req, res, next) => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════
+//  Block User — Feature 11
+// ═══════════════════════════════════════════════════════════
+const blockUser = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+  const { blockId } = req.params;
+
+  if (userId.toString() === blockId) {
+    return next(new ErrorHandler("You cannot block yourself", 400));
+  }
+
+  const userToBlock = await userModel.findById(blockId);
+  if (!userToBlock) {
+    return next(new ErrorHandler("User to block not found", 404));
+  }
+
+  await userModel.findByIdAndUpdate(userId, {
+    $addToSet: { blockedUsers: blockId },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "User blocked successfully",
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Unblock User — Feature 11
+// ═══════════════════════════════════════════════════════════
+const unblockUser = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+  const { blockId } = req.params;
+
+  await userModel.findByIdAndUpdate(userId, {
+    $pull: { blockedUsers: blockId },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "User unblocked successfully",
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Archive Chat — Feature 11
+// ═══════════════════════════════════════════════════════════
+const archiveChat = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+  const { conversationId } = req.params;
+
+  await userModel.findByIdAndUpdate(userId, {
+    $addToSet: { archivedChats: conversationId },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Chat archived successfully",
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  Unarchive Chat — Feature 11
+// ═══════════════════════════════════════════════════════════
+const unarchiveChat = catchAsyncError(async (req, res, next) => {
+  const userId = req.user._id;
+  const { conversationId } = req.params;
+
+  await userModel.findByIdAndUpdate(userId, {
+    $pull: { archivedChats: conversationId },
+  });
+
+  res.status(200).json({
+    success: true,
+    message: "Chat unarchived successfully",
+  });
+});
+
 module.exports = {
   signUpController,
   verifyUserController,
   signInController,
   signOutController,
   getUserController,
+  getUserProfileById,
   updateProfileController,
   savePushSubscription,
   savePublicKey,
   getUserPublicKey,
+  blockUser,
+  unblockUser,
+  archiveChat,
+  unarchiveChat,
 };

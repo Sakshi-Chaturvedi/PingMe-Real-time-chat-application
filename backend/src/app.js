@@ -10,6 +10,7 @@ const authRouter = require("./routes/user.route");
 const messageRouter = require("./routes/message.route");
 const groupRouter = require("./routes/group.route");
 const statusRouter = require("./routes/status.route");
+const notificationRouter = require("./routes/notification.route");
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use("/api/v1/auth", authLimiter, authRouter);
 app.use("/api/v1/message", messageRouter);
 app.use("/api/v1/group", groupRouter);
 app.use("/api/v1/status", statusRouter);
+app.use("/api/v1/notifications", notificationRouter);
 
 // 404 handler
 app.use((req, res) => {

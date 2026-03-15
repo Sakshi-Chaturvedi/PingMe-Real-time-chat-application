@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createGroup } from "../api";
 import toast from "react-hot-toast";
-import { FiX, FiUsers, FiCheck } from "react-icons/fi";
+import { FiX, FiUsers, FiCheck, FiCamera } from "react-icons/fi";
 
 export default function CreateGroupModal({ users, onClose, onCreated }) {
   const [groupName, setGroupName] = useState("");
   const [description, setDescription] = useState("");
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [avatarFile, setAvatarFile] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const fileRef = useRef(null);
 
   const toggleUser = (userId) => {
     setSelectedUsers((prev) =>
@@ -33,6 +36,7 @@ export default function CreateGroupModal({ users, onClose, onCreated }) {
       formData.append("groupName", groupName);
       formData.append("groupDescription", description);
       formData.append("participants", JSON.stringify(selectedUsers));
+      if (avatarFile) formData.append("media", avatarFile);
 
       const { data } = await createGroup(formData);
       if (data.success) {
@@ -58,6 +62,38 @@ export default function CreateGroupModal({ users, onClose, onCreated }) {
           </button>
         </div>
         <div className="modal-body">
+          {/* Avatar Upload */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+            <div
+              style={{
+                width: 80, height: 80, borderRadius: '50%',
+                background: 'var(--bg-active)', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', overflow: 'hidden', position: 'relative',
+              }}
+              onClick={() => fileRef.current?.click()}
+              title="Upload group avatar"
+            >
+              {avatarPreview ? (
+                <img src={avatarPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <FiCamera style={{ fontSize: '1.5rem', color: 'var(--text-muted)' }} />
+              )}
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files[0];
+                if (f) {
+                  setAvatarFile(f);
+                  setAvatarPreview(URL.createObjectURL(f));
+                }
+              }}
+            />
+          </div>
           <input
             type="text"
             placeholder="Group name"

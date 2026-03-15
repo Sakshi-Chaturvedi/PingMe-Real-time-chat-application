@@ -3,6 +3,8 @@ const { ErrorHandler } = require("../middlewares/errorMiddleware");
 const conversationModel = require("../models/conversation.model");
 const messageModel = require("../models/message.model");
 const userModel = require("../models/user.model");
+const notificationModel = require("../models/notification.model");
+const { isUserOnline } = require("../utils/socket");
 
 // ═══════════════════════════════════════════════════════════
 //  GET ALL USERS (for chat sidebar)
@@ -29,6 +31,9 @@ const getAllUsers = catchAsyncError(async (req, res, next) => {
 const getMessages = catchAsyncError(async (req, res, next) => {
   const receiverId = req.params.id;
   const senderId = req.user._id;
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 20;
+  const skip = (page - 1) * limit;
 
   if (!receiverId) {
     return next(new ErrorHandler("Receiver id is invalid.", 400));
@@ -44,23 +49,34 @@ const getMessages = catchAsyncError(async (req, res, next) => {
   if (!conversation) {
     return res.status(200).json({
       success: true,
-      count: 0,
       messages: [],
+      currentPage: page,
+      totalPages: 0,
+      hasMore: false,
     });
   }
 
+  // Get total count for pagination info
+  const totalMessages = await messageModel.countDocuments({ conversationId: conversation._id });
+  const totalPages = Math.ceil(totalMessages / limit);
+
   // Fetch messages by conversationId and populate sender info
+  // Sort by -1 to get the most recent messages for the requested page
   const messages = await messageModel
     .find({ conversationId: conversation._id })
     .populate("sender", "username avatar")
     .populate("reactions.user", "username avatar")
     .populate("replyTo", "message sender")
-    .sort({ createdAt: 1 });
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
 
   res.status(200).json({
     success: true,
-    count: messages.length,
-    messages,
+    messages: messages.reverse(), // Reverse to send them in chronological order for the frontend
+    currentPage: page,
+    totalPages,
+    hasMore: page < totalPages,
   });
 });
 
@@ -73,6 +89,19 @@ const sendMessages = catchAsyncError(async (req, res, next) => {
 
   if (!receiverId) {
     return next(new ErrorHandler("Receiver id is required", 400));
+  }
+
+  // Check for blocks — Feature 11
+  const receiver = await userModel.findById(receiverId);
+  if (!receiver) return next(new ErrorHandler("Receiver not found", 404));
+
+  const sender = await userModel.findById(senderId);
+
+  if (receiver.blockedUsers && receiver.blockedUsers.includes(senderId)) {
+    return next(new ErrorHandler("You are blocked by this user", 403));
+  }
+  if (sender.blockedUsers && sender.blockedUsers.includes(receiverId)) {
+    return next(new ErrorHandler("You have blocked this user. Unblock to send messages.", 403));
   }
 
   // Atomically find or create the conversation to prevent race condition duplicates
@@ -142,9 +171,31 @@ const sendMessages = catchAsyncError(async (req, res, next) => {
 
   // Emit real-time message
   if (global.io) {
-    global.io
-      .to(receiverId.toString())
-      .emit("receiveMessage", populatedMessage);
+    if (isUserOnline(receiverId.toString())) {
+      global.io
+        .to(receiverId.toString())
+        .emit("receiveMessage", populatedMessage);
+      
+      // Also emit a push/in-app notification event
+      global.io
+        .to(receiverId.toString())
+        .emit("newNotification", {
+          sender: req.user.username,
+          content: message ? message.substring(0, 50) : "Attachment",
+          type: "new_message"
+        });
+    } else {
+      // Offline: store notification
+      await notificationModel.create({
+        recipient: receiverId,
+        sender: senderId,
+        type: "new_message",
+        content: message ? message.substring(0, 50) : "Sent an attachment",
+        conversationId: conversation._id
+      });
+    }
+
+    // Always emit back to sender for their own UI update
     global.io
       .to(senderId.toString())
       .emit("receiveMessage", populatedMessage);
@@ -371,33 +422,43 @@ const markAsRead = catchAsyncError(async (req, res, next) => {
 //  SEARCH MESSAGES — Feature 9
 // ═══════════════════════════════════════════════════════════
 const searchMessages = catchAsyncError(async (req, res, next) => {
-  const { query, conversationId } = req.query;
+  const { query, conversationId, hasMedia } = req.query;
 
-  if (!query || query.trim().length === 0) {
-    return next(new ErrorHandler("Search query is required", 400));
+  if (!conversationId) {
+    return next(new ErrorHandler("Conversation ID is required for searching", 400));
+  }
+
+  if ((!query || query.trim().length === 0) && hasMedia !== "true") {
+    return next(new ErrorHandler("Search query or hasMedia flag is required", 400));
   }
 
   const searchFilter = {
-    $text: { $search: query },
+    conversationId,
     isDeleted: { $ne: true },
   };
 
-  // If conversationId provided, scope search to that conversation
-  if (conversationId) {
-    searchFilter.conversationId = conversationId;
+  const sortOptions = {};
+  const projection = {};
+
+  if (query && query.trim().length > 0) {
+    // Note: MongoDB text search works best with the text index we just created
+    searchFilter.$text = { $search: query };
+    sortOptions.score = { $meta: "textScore" };
+    projection.score = { $meta: "textScore" };
+  } else if (hasMedia === "true") {
+    searchFilter["media.url"] = { $ne: "" };
+    sortOptions.createdAt = -1;
   }
 
   const messages = await messageModel
-    .find(searchFilter, { score: { $meta: "textScore" } })
+    .find(searchFilter, projection)
     .populate("sender", "username avatar")
-    .populate("conversationId", "participants")
-    .sort({ score: { $meta: "textScore" } })
+    .sort(sortOptions)
     .limit(50);
 
   res.status(200).json({
     success: true,
-    count: messages.length,
-    messages,
+    results: messages,
   });
 });
 
@@ -460,9 +521,20 @@ const getPinnedMessages = catchAsyncError(async (req, res, next) => {
 // ═══════════════════════════════════════════════════════════
 const getConversations = catchAsyncError(async (req, res, next) => {
   const userId = req.user._id;
+  const { archived } = req.query;
+
+  // Re-fetch user to get latest archived list
+  const user = await userModel.findById(userId);
+
+  const query = { participants: userId };
+  if (archived === "true") {
+    query._id = { $in: user.archivedChats || [] };
+  } else {
+    query._id = { $nin: user.archivedChats || [] };
+  }
 
   const conversations = await conversationModel
-    .find({ participants: userId })
+    .find(query)
     .populate("participants", "username avatar isOnline lastSeen")
     .populate("lastMessage")
     .populate("groupAdmin", "username")
@@ -472,6 +544,135 @@ const getConversations = catchAsyncError(async (req, res, next) => {
     success: true,
     count: conversations.length,
     conversations,
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  FORWARD MESSAGE — creates a NEW message in the target conversation
+//  Flow: find original → validate target → create copy → broadcast
+// ═══════════════════════════════════════════════════════════
+const forwardMessage = catchAsyncError(async (req, res, next) => {
+  const { messageId } = req.params;
+  const { receiverId, groupId } = req.body;
+  const senderId = req.user._id;
+
+  if (!receiverId && !groupId) {
+    return next(new ErrorHandler("Receiver ID or Group ID is required", 400));
+  }
+
+  // 1. Find the original message
+  const originalMessage = await messageModel.findById(messageId).populate("sender", "username avatar");
+  if (!originalMessage) {
+    return next(new ErrorHandler("Original message not found", 404));
+  }
+
+  // 2. Determine target conversation & validate membership
+  let conversation;
+  if (groupId) {
+    // Forwarding to a group
+    conversation = await conversationModel.findById(groupId);
+    if (!conversation || !conversation.isGroup) {
+      return next(new ErrorHandler("Group not found", 404));
+    }
+    // Check if sender is still a member
+    if (!conversation.participants.some((p) => p.toString() === senderId.toString())) {
+      return next(new ErrorHandler("You are no longer a member of this group. Cannot forward.", 403));
+    }
+  } else {
+    // Forwarding to an individual user — find or create DM conversation
+    
+    // Check for blocks — Feature 11
+    const receiver = await userModel.findById(receiverId);
+    if (!receiver) return next(new ErrorHandler("Receiver not found", 404));
+    
+    const sender = await userModel.findById(senderId);
+
+    if (receiver.blockedUsers && receiver.blockedUsers.includes(senderId)) {
+      return next(new ErrorHandler("You are blocked by this user. Cannot forward.", 403));
+    }
+    if (sender.blockedUsers && sender.blockedUsers.includes(receiverId)) {
+      return next(new ErrorHandler("You have blocked this user. Unblock to forward messages.", 403));
+    }
+
+    conversation = await conversationModel.findOneAndUpdate(
+      {
+        isGroup: false,
+        participants: { $all: [senderId, receiverId], $size: 2 },
+      },
+      {
+        $setOnInsert: { participants: [senderId, receiverId], isGroup: false },
+      },
+      { returnDocument: "after", upsert: true, setDefaultsOnInsert: true }
+    );
+  }
+
+  // 3. Create the forwarded message as a new document
+  //    Preserves text, media, and file from the original
+  const forwardedMessage = await messageModel.create({
+    conversationId: conversation._id,
+    sender: senderId,
+    message: originalMessage.message,
+    media: originalMessage.media,
+    file: originalMessage.file,
+    isForwarded: true,
+    forwardedFrom: {
+      userId: originalMessage.sender._id || originalMessage.sender,
+      messageId: originalMessage._id,
+    },
+  });
+
+  // 4. Update conversation's last message pointer
+  conversation.lastMessage = forwardedMessage._id;
+  await conversation.save();
+
+  // 5. Populate sender and forwardedFrom info for broadcasting
+  const populatedMessage = await messageModel
+    .findById(forwardedMessage._id)
+    .populate("sender", "username avatar")
+    .populate("forwardedFrom.userId", "username avatar");
+
+  // 6. Broadcast to all relevant receivers via Socket.IO
+  if (global.io) {
+    if (groupId) {
+      // Emit to every group member
+      conversation.participants.forEach((memberId) => {
+        global.io.to(memberId.toString()).emit("receiveMessage", populatedMessage);
+      });
+    } else {
+      // Emit to receiver and sender (for instant local update)
+      global.io.to(receiverId.toString()).emit("receiveMessage", populatedMessage);
+      global.io.to(senderId.toString()).emit("receiveMessage", populatedMessage);
+    }
+  }
+
+  res.status(201).json({
+    success: true,
+    message: "Message forwarded successfully",
+    data: populatedMessage,
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+//  GET SHARED MEDIA
+// ═══════════════════════════════════════════════════════════
+const getSharedMedia = catchAsyncError(async (req, res, next) => {
+  const { conversationId } = req.params;
+
+  const mediaMessages = await messageModel
+    .find({
+      conversationId,
+      isDeleted: { $ne: true },
+      $or: [
+        { "media.url": { $ne: "" } },
+        { "file.url": { $ne: "" } }
+      ]
+    })
+    .sort({ createdAt: -1 })
+    .limit(100);
+
+  res.status(200).json({
+    success: true,
+    media: mediaMessages,
   });
 });
 
@@ -488,4 +689,6 @@ module.exports = {
   togglePinMessage,
   getPinnedMessages,
   getConversations,
+  forwardMessage,
+  getSharedMedia,
 };

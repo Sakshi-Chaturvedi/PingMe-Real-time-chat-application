@@ -15,6 +15,8 @@ const {
   togglePinMessage,
   getPinnedMessages,
   getConversations,
+  forwardMessage,
+  getSharedMedia,
 } = require("../controllers/message.controller");
 
 const messageRouter = express.Router();
@@ -30,6 +32,9 @@ messageRouter.get("/conversations", getConversations);
 
 // Get messages between two users
 messageRouter.get("/getMessages/:id", getMessages);
+
+// Get shared media
+messageRouter.get("/media/:conversationId", getSharedMedia);
 
 // Send message (text + media + file)
 messageRouter.post("/sendMessage", upload.single("media"), sendMessages);
@@ -51,5 +56,8 @@ messageRouter.get("/search", searchMessages);
 // ── Pin / Unpin — Feature 9 ──
 messageRouter.put("/pin/:messageId", togglePinMessage);
 messageRouter.get("/pinned/:conversationId", getPinnedMessages);
+
+// ── Forward Messages ──
+messageRouter.post("/forward/:messageId", forwardMessage);
 
 module.exports = messageRouter;
