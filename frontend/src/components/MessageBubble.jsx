@@ -9,6 +9,7 @@ import {
   FiCheck,
   FiCheckCircle,
   FiCornerUpRight,
+  FiCornerUpLeft,
 } from "react-icons/fi";
 
 // Quick reaction emojis
@@ -22,6 +23,7 @@ export default function MessageBubble({
   onReaction,
   onTogglePin,
   onForward,
+  onReply,
   highlight,
   getFileIcon,
 }) {
@@ -88,8 +90,16 @@ export default function MessageBubble({
 
       {/* Reply reference */}
       {msg.replyTo && (
-        <div className="reply-ref">
-          <span>↩ {msg.replyTo.message?.substring(0, 50)}...</span>
+        <div className="reply-ref" onClick={() => {
+          const el = document.getElementById(`msg-${msg.replyTo._id}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}>
+          <span className="reply-ref-sender">
+            {msg.replyTo.sender?.username || "Original Message"}
+          </span>
+          <p className="reply-ref-text">
+            {msg.replyTo.message?.substring(0, 80) || "Media/File"}
+          </p>
         </div>
       )}
 
@@ -188,6 +198,9 @@ export default function MessageBubble({
           </button>
           <button onClick={() => onForward(msg)} title="Forward">
             <FiCornerUpRight />
+          </button>
+          <button onClick={() => onReply(msg)} title="Reply">
+            <FiCornerUpLeft />
           </button>
           {isOwn && (
             <>

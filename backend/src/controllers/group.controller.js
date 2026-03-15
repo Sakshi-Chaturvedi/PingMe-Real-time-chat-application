@@ -500,7 +500,11 @@ const sendGroupMessage = catchAsyncError(async (req, res, next) => {
   const populatedMessage = await messageModel
     .findById(newMessage._id)
     .populate("sender", "username avatar")
-    .populate("replyTo", "message sender");
+    .populate({
+      path: "replyTo",
+      select: "message sender",
+      populate: { path: "sender", select: "username" }
+    });
 
   // Emit to all group members
   if (global.io) {
@@ -570,7 +574,11 @@ const getGroupMessages = catchAsyncError(async (req, res, next) => {
     .find({ conversationId: groupId })
     .populate("sender", "username avatar")
     .populate("reactions.user", "username avatar")
-    .populate("replyTo", "message sender")
+    .populate({
+      path: "replyTo",
+      select: "message sender",
+      populate: { path: "sender", select: "username" }
+    })
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);

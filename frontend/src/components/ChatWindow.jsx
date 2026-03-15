@@ -31,6 +31,7 @@ import {
   FiX,
   FiFile,
   FiDownload,
+  FiCornerUpLeft,
 } from "react-icons/fi";
 import MessageBubble from "./MessageBubble";
 import UserProfilePanel from "./UserProfilePanel";
@@ -58,6 +59,7 @@ export default function ChatWindow({ chatData, onBack }) {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const [replyingTo, setReplyingTo] = useState(null);
   const messagesEndRef = useRef(null);
   const scrollRef = useRef(null);
   const prevScrollHeightRef = useRef(0);
@@ -258,6 +260,7 @@ export default function ChatWindow({ chatData, onBack }) {
     const formData = new FormData();
     formData.append("message", newMessage);
     if (file) formData.append("media", file);
+    if (replyingTo) formData.append("replyTo", replyingTo._id);
 
     try {
       let res;
@@ -280,6 +283,7 @@ export default function ChatWindow({ chatData, onBack }) {
 
       setNewMessage("");
       setFile(null);
+      setReplyingTo(null);
       setShowEmoji(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (err) {
@@ -509,6 +513,7 @@ export default function ChatWindow({ chatData, onBack }) {
             onReaction={handleReaction}
             onTogglePin={handleTogglePin}
             onForward={(msg) => setForwardingMsg(msg)}
+            onReply={(msg) => setReplyingTo(msg)}
             highlight={searchQuery}
             getFileIcon={getFileIcon}
           />
@@ -534,6 +539,25 @@ export default function ChatWindow({ chatData, onBack }) {
           <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}>
             <FiX />
           </button>
+        </div>
+      )}
+
+      {/* Reply Preview */}
+      {replyingTo && (
+        <div className="reply-preview-container">
+          <div className="reply-preview-bar">
+            <div className="reply-preview-info">
+              <span className="reply-sender">
+                Replying to {replyingTo.sender?.username || (replyingTo.sender === user._id ? "You" : "User")}
+              </span>
+              <p className="reply-text">
+                {replyingTo.message || (replyingTo.file?.originalName ? `File: ${replyingTo.file.originalName}` : "Media")}
+              </p>
+            </div>
+            <button className="cancel-reply" onClick={() => setReplyingTo(null)}>
+              <FiX />
+            </button>
+          </div>
         </div>
       )}
 
